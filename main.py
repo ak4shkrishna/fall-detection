@@ -5,6 +5,7 @@ import time
 import sys
 import os
 import threading
+import json
 from datetime import datetime
 
 sys.path.append(os.path.dirname(__file__))
@@ -17,6 +18,16 @@ from core.detector import (
 )
 from alerts.alert_chain import AlertChain
 from voice.assistant import VoiceAssistant
+
+STATE_FILE = os.path.join(os.path.dirname(__file__), "dashboard", "state.json")
+
+
+def write_state(data: dict):
+    try:
+        with open(STATE_FILE, "w") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
 
 
 def choose_source():
@@ -82,24 +93,28 @@ def main():
     alert_chain = AlertChain()
     voice       = VoiceAssistant()
 
-    fall_active     = False
-    fall_event_id   = None
-    countdown_val   = 0
-    countdown_start = 0
-    stick_snap      = None
-    real_snap       = None
-    show_real       = True   # T key toggles this
+    fall_active       = False
+    fall_event_id     = None
+    countdown_val     = 0
+    countdown_start   = 0
+    stick_snap        = None
+    real_snap         = None
+    show_real         = True
+    cancel_flash_until = 0   # timestamp until which to show cancelled banner
 
     def on_cancelled():
-        nonlocal fall_active, fall_event_id
+        nonlocal fall_active, fall_event_id, cancel_flash_until
         alert_chain.cancel()
         if fall_event_id:
             cancel_fall_event(fall_event_id)
-        fall_active   = False
-        fall_event_id = None
+        fall_active        = False
+        fall_event_id      = None
+        cancel_flash_until = time.time() + 3
+        detector.reset()   # clear low_frames so next fall can trigger fresh
         print("[MAIN] Fall cancelled by voice.")
 
     def on_timeout():
+        nonlocal fall_active, fall_event_id
         alert_chain.fire(
             fall_event_id   = fall_event_id,
             location        = location,
@@ -108,6 +123,36 @@ def main():
             stick_path      = stick_snap,
             real_photo_path = real_snap
         )
+        fall_active   = False
+        fall_event_id = None
+        detector.reset()   # ready for next fall
+
+    # Write initial online state
+    write_state({
+        "online": True,
+        "patient_id": patient_id,
+        "fall_active": False,
+        "countdown_val": 0,
+        "trunk_angle": 0.0,
+        "confidence": 0.0,
+        "source_label": source_label,
+        "fall_state": "normal",
+    })
+
+    # ── Create maximized window once, before the loop ─────────────────────────
+    import ctypes
+    import numpy as _np
+    WIN = "Fall Detection System"
+    cv2.namedWindow(WIN, cv2.WINDOW_NORMAL)
+    # Show blank frame, pump events, then maximize — reliable sequence
+    blank = _np.zeros((720, 1280, 3), dtype=_np.uint8)
+    cv2.imshow(WIN, blank)
+    for _ in range(5):          # pump a few times so Win32 registers the window
+        cv2.waitKey(30)
+    hwnd = ctypes.windll.user32.FindWindowW(None, WIN)
+    if hwnd:
+        ctypes.windll.user32.ShowWindow(hwnd, 3)   # SW_MAXIMIZE
+        ctypes.windll.user32.SetForegroundWindow(hwnd)
 
     while True:
         ret, frame = cap.read()
@@ -159,14 +204,12 @@ def main():
             elapsed       = time.time() - countdown_start
             countdown_val = max(0, 15 - int(elapsed))
 
-        # Toggle real vs stick figure with T key
         fall_state = detector.get_state(trunk_angle) if result.pose_landmarks else "normal"
         if fall_active:
             fall_state = "fall"
 
         if show_real:
             canvas = frame.copy()
-            # Draw skeleton on real video too
             if result.pose_landmarks:
                 mp.solutions.drawing_utils.draw_landmarks(
                     canvas,
@@ -182,11 +225,27 @@ def main():
 
         draw_hud(canvas, trunk_angle, detector,
                  source_label, location,
-                 fall_active, countdown_val)
+                 fall_active, countdown_val,
+                 cancel_flash=time.time() < cancel_flash_until)
 
-        canvas = cv2.resize(canvas, (1280, 720))
-        cv2.namedWindow("Fall Detection System", cv2.WINDOW_NORMAL)
-        cv2.imshow("Fall Detection System", canvas)
+        # Save frame for dashboard
+        frame_path = os.path.join(os.path.dirname(__file__), "dashboard", "live_frame.jpg")
+        cv2.imwrite(frame_path, canvas)
+
+        # Write state for dashboard
+        write_state({
+            "online":       True,
+            "patient_id":   patient_id,
+            "fall_active":  fall_active,
+            "countdown_val": countdown_val,
+            "trunk_angle":  round(trunk_angle, 1),
+            "confidence":   round(detector.confidence, 3),
+            "source_label": source_label,
+            "fall_state":   fall_state,
+        })
+
+        # Show native resolution — no resize, window handles scaling
+        cv2.imshow(WIN, canvas)
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
@@ -205,6 +264,8 @@ def main():
             print(f"  Caregiver 1: {patient[6]} {patient[7]}")
             print(f"  Caregiver 2: {patient[8]} {patient[9]}\n")
 
+    # Mark offline when done
+    write_state({"online": False})
     cap.release()
     cv2.destroyAllWindows()
     pose.close()

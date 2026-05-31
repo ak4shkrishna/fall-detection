@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Fall Detection — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:        #0a0c10;
+    --surface:   #111318;
+    --border:    #1e2128;
+    --accent:    #00e5a0;
+    --danger:    #ff4757;
+    --warn:      #ffa502;
+    --text:      #e8eaf0;
+    --muted:     #5a6070;
+    --mono:      'Space Mono', monospace;
+    --sans:      'DM Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: 56px 1fr;
+    grid-template-columns: 1fr;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 28px;
+    gap: 12px;
+  }
+  .logo-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; box-shadow: 0 0 10px var(--accent); }
+    50%      { opacity: 0.4; box-shadow: 0 0 4px var(--accent); }
+  }
+  header h1 {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .header-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .source-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+  #status-pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    background: #162820;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    transition: all 0.3s;
+    letter-spacing: 0.06em;
+  }
+  #status-pill.danger {
+    background: #2a1018;
+    color: var(--danger);
+    border-color: var(--danger);
+    animation: blink 0.8s infinite;
+  }
+  @keyframes blink {
+    0%,100% { opacity: 1; } 50% { opacity: 0.5; }
+  }
+
+  /* ── Main layout ── */
+  main {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    grid-template-rows: 1fr 220px;
+    gap: 1px;
+    background: var(--border);
+    overflow: hidden;
+  }
+
+  .panel {
+    background: var(--surface);
+    padding: 20px;
+    overflow: hidden;
+  }
+  .panel-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  /* ── Video feed ── */
+  #video-panel {
+    grid-row: 1;
+    grid-column: 1;
+    padding: 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #050608;
+  }
+  #video-panel img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+  #fall-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255,71,87,0.18);
+    border: 3px solid var(--danger);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: none;
+  }
+  #fall-overlay.active { display: flex; }
+  #fall-overlay .alert-text {
+    font-family: var(--mono);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--danger);
+    text-shadow: 0 0 30px var(--danger);
+    letter-spacing: 0.1em;
+    animation: blink 0.8s infinite;
+  }
+  #countdown-ring {
+    font-family: var(--mono);
+    font-size: 48px;
+    color: var(--danger);
+    text-shadow: 0 0 40px var(--danger);
+  }
+  .corner-label {
+    position: absolute;
+    top: 14px; left: 14px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    background: rgba(10,12,16,0.7);
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+
+  /* ── Metrics panel ── */
+  #metrics-panel {
+    grid-row: 1;
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .metric-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .metric-card .label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .metric-card .value {
+    font-family: var(--mono);
+    font-size: 26px;
+    color: var(--accent);
+    line-height: 1;
+  }
+  .metric-card .value.danger { color: var(--danger); }
+  .metric-card .value.warn   { color: var(--warn); }
+
+  .bar-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--accent);
+    transition: width 0.4s ease;
+  }
+  .bar-fill.danger { background: var(--danger); }
+  .bar-fill.warn   { background: var(--warn); }
+
+  /* Patient card */
+  .patient-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    flex: 1;
+  }
+  .patient-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .patient-meta {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .patient-meta span { color: var(--text); }
+
+  /* ── Fall history ── */
+  #history-panel {
+    grid-row: 2;
+    grid-column: 1 / 3;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  #fall-table-wrap {
+    overflow-y: auto;
+    flex: 1;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead th {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    text-align: left;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+  }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  tbody tr:hover { background: rgba(255,255,255,0.03); }
+  tbody td {
+    padding: 10px 12px;
+    color: var(--text);
+  }
+  .badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 0.05em;
+  }
+  .badge.cancelled { background: #162820; color: var(--accent); border: 1px solid var(--accent); }
+  .badge.alerted   { background: #2a1018; color: var(--danger); border: 1px solid var(--danger); }
+  .empty-row td {
+    text-align: center;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 30px;
+  }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-dot"></div>
+  <h1>Fall Detection System</h1>
+  <div class="header-right">
+    <span class="source-badge" id="source-label">WEBCAM</span>
+    <span id="status-pill">MONITORING</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- Live video -->
+  <div class="panel" id="video-panel">
+    <img id="live-img" src="/video_feed" alt="Live Feed" style="display:none"/>
+    <div id="offline-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px;">
+      <div style="font-size:48px;opacity:0.15">📷</div>
+      <div style="font-family:var(--mono);font-size:13px;color:var(--muted);letter-spacing:0.1em;">SYSTEM OFFLINE</div>
+      <div style="font-size:12px;color:var(--muted);opacity:0.6">Run main.py to start monitoring</div>
+    </div>
+    <div class="corner-label" id="corner-label">OFFLINE</div>
+    <div id="fall-overlay">
+      <div class="alert-text">⚠ FALL DETECTED</div>
+      <div id="countdown-ring">15</div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--danger);letter-spacing:0.08em;">SAY "I AM OKAY" TO CANCEL</div>
+    </div>
+  </div>
+
+  <!-- Metrics -->
+  <div class="panel" id="metrics-panel">
+    <div class="panel-label">Live Metrics</div>
+
+    <div class="metric-card">
+      <div class="label">Trunk Angle</div>
+      <div class="value" id="trunk-val">0.0°</div>
+      <div class="bar-track"><div class="bar-fill" id="trunk-bar" style="width:0%"></div></div>
+    </div>
+
+    <div class="metric-card">
+      <div class="label">Fall Confidence</div>
+      <div class="value" id="conf-val">0%</div>
+      <div class="bar-track"><div class="bar-fill" id="conf-bar" style="width:0%"></div></div>
+    </div>
+
+    <div class="patient-card">
+      <div class="panel-label" style="margin-bottom:8px">Patient</div>
+      {% if patient %}
+      <div class="patient-name">{{ patient[1] }}</div>
+      <div class="patient-meta">
+        Age: <span>{{ patient[2] }}</span> &nbsp;|&nbsp; Blood: <span>{{ patient[3] or '—' }}</span><br/>
+        Location: <span>{{ patient[10] or '—' }}</span><br/>
+        Conditions: <span>{{ patient[4] or 'None' }}</span><br/>
+        CG1: <span>{{ patient[6] or '—' }} {{ patient[7] or '' }}</span><br/>
+        CG2: <span>{{ patient[8] or '—' }} {{ patient[9] or '' }}</span>
+      </div>
+      {% else %}
+      <div class="patient-meta">No patient loaded.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Fall history -->
+  <div class="panel" id="history-panel">
+    <div class="panel-label">Fall History</div>
+    <div id="fall-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Timestamp</th>
+            <th>Location</th>
+            <th>Confidence</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="fall-tbody">
+          <tr class="empty-row"><td colspan="5">No falls recorded yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  const patientId = {{ patient[0] if patient else 1 }};
+
+  // ── Poll live status every second ──────────────────────────────────────────
+  let isOnline = false;
+
+  async function pollStatus() {
+    try {
+      const r = await fetch("/api/status");
+      const d = await r.json();
+
+      // Online — show feed
+      if (!isOnline) {
+        isOnline = true;
+        document.getElementById("live-img").style.display = "block";
+        document.getElementById("offline-screen").style.display = "none";
+        document.getElementById("corner-label").textContent = "LIVE";
+      }
+
+      // Status pill
+      const pill = document.getElementById("status-pill");
+      const overlay = document.getElementById("fall-overlay");
+      if (d.fall_active) {
+        pill.textContent = "FALL DETECTED";
+        pill.className = "danger";
+        overlay.classList.add("active");
+        document.getElementById("countdown-ring").textContent = d.countdown;
+      } else {
+        pill.textContent = "MONITORING";
+        pill.className = "";
+        overlay.classList.remove("active");
+      }
+
+      // Source label
+      document.getElementById("source-label").textContent = d.source_label.toUpperCase();
+
+      // Trunk angle
+      const angle = Math.abs(d.trunk_angle);
+      const trunkVal = document.getElementById("trunk-val");
+      const trunkBar = document.getElementById("trunk-bar");
+      trunkVal.textContent = angle.toFixed(1) + "°";
+      const anglePct = Math.min(angle / 90 * 100, 100);
+      trunkBar.style.width = anglePct + "%";
+      if (angle > 60) { trunkVal.className = "value danger"; trunkBar.className = "bar-fill danger"; }
+      else if (angle > 35) { trunkVal.className = "value warn"; trunkBar.className = "bar-fill warn"; }
+      else { trunkVal.className = "value"; trunkBar.className = "bar-fill"; }
+
+      // Confidence
+      const conf = d.confidence;
+      const confVal = document.getElementById("conf-val");
+      const confBar = document.getElementById("conf-bar");
+      confVal.textContent = conf.toFixed(1) + "%";
+      confBar.style.width = conf + "%";
+      if (conf > 70) { confVal.className = "value danger"; confBar.className = "bar-fill danger"; }
+      else if (conf > 40) { confVal.className = "value warn"; confBar.className = "bar-fill warn"; }
+      else { confVal.className = "value"; confBar.className = "bar-fill"; }
+
+    } catch(e) {
+      // Detection stopped — show offline screen
+      isOnline = false;
+      document.getElementById("live-img").style.display = "none";
+      document.getElementById("offline-screen").style.display = "flex";
+      document.getElementById("corner-label").textContent = "OFFLINE";
+      const pill = document.getElementById("status-pill");
+      pill.textContent = "OFFLINE";
+      pill.className = "";
+      document.getElementById("fall-overlay").classList.remove("active");
+    }
+  }
+
+  // ── Poll fall history every 5 seconds ──────────────────────────────────────
+  async function pollFalls() {
+    try {
+      const r = await fetch(`/api/falls/${patientId}`);
+      const falls = await r.json();
+      const tbody = document.getElementById("fall-tbody");
+      if (!falls.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No falls recorded yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = falls.reverse().map((f, i) => `
+        <tr>
+          <td style="font-family:var(--mono);color:var(--muted)">${falls.length - i}</td>
+          <td>${f.timestamp}</td>
+          <td>${f.location}</td>
+          <td style="font-family:var(--mono)">${f.confidence}%</td>
+          <td><span class="badge ${f.cancelled ? 'cancelled' : 'alerted'}">${f.cancelled ? 'CANCELLED' : 'ALERTED'}</span></td>
+        </tr>
+      `).join("");
+    } catch(e) { console.warn("Falls poll failed", e); }
+  }
+
+  setInterval(pollStatus, 1000);
+  setInterval(pollFalls, 5000);
+  pollStatus();
+  pollFalls();
+</script>
+</body>
+</html>
