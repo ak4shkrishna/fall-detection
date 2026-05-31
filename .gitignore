@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+*.jpg
+*.mp4
+*.db
+.env
+assets/snapshots/
+dashboard/live_frame.jpg
+dashboard/state.json
