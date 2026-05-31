@@ -20,6 +20,9 @@ app = Flask(__name__)
 STATE_FILE = os.path.join(os.path.dirname(__file__), "state.json")
 FRAME_FILE = os.path.join(os.path.dirname(__file__), "live_frame.jpg")
 
+# Record server start time to calculate system uptime
+START_TIME = time.time()
+
 
 def read_state():
     try:
@@ -47,6 +50,7 @@ def generate_frames():
             pass
         time.sleep(1 / 15)
 
+
 @app.route("/")
 def index():
     state = read_state()
@@ -66,16 +70,31 @@ def video_feed():
 @app.route("/api/status")
 def api_status():
     state = read_state()
+    uptime = round(time.time() - START_TIME)
+
     if not state.get("online"):
-        return jsonify({"online": False}), 503
+        return jsonify({"online": False, "uptime": uptime}), 200
+
+    trunk_angle = state.get("trunk_angle", 0.0)
+    fall_state  = state.get("fall_state", "normal")
+
+    if fall_state == "fall" or state.get("fall_active", False):
+        posture_label = "FALLEN"
+    elif trunk_angle > 45:
+        posture_label = "BENDING"
+    else:
+        posture_label = "STANDING"
+
     return jsonify({
         "online":        True,
         "fall_active":   state.get("fall_active", False),
         "countdown":     state.get("countdown_val", 0),
-        "trunk_angle":   state.get("trunk_angle", 0.0),
+        "trunk_angle":   trunk_angle,
         "confidence":    round(state.get("confidence", 0.0) * 100, 1),
         "source_label":  state.get("source_label", "—"),
-        "fall_state":    state.get("fall_state", "normal"),
+        "fall_state":    fall_state,
+        "posture_label": posture_label,
+        "uptime":        uptime,
     })
 
 

@@ -178,13 +178,15 @@
     grid-column: 2;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 10px;
+    overflow-y: auto;
   }
   .metric-card {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 14px 16px;
+    padding: 12px 16px;
+    flex-shrink: 0;
   }
   .metric-card .label {
     font-family: var(--mono);
@@ -196,12 +198,13 @@
   }
   .metric-card .value {
     font-family: var(--mono);
-    font-size: 26px;
+    font-size: 24px;
     color: var(--accent);
     line-height: 1;
   }
   .metric-card .value.danger { color: var(--danger); }
   .metric-card .value.warn   { color: var(--warn); }
+  .metric-card .value.neutral { color: var(--text); }
 
   .bar-track {
     height: 6px;
@@ -224,17 +227,17 @@
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 8px;
-    padding: 14px 16px;
-    flex: 1;
+    padding: 12px 16px;
+    flex-shrink: 0;
   }
   .patient-name {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
     color: var(--text);
     margin-bottom: 4px;
   }
   .patient-meta {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
     line-height: 1.7;
   }
@@ -335,6 +338,12 @@
   <div class="panel" id="metrics-panel">
     <div class="panel-label">Live Metrics</div>
 
+    <!-- NEW: Posture label -->
+    <div class="metric-card">
+      <div class="label">Posture</div>
+      <div class="value" id="posture-val">—</div>
+    </div>
+
     <div class="metric-card">
       <div class="label">Trunk Angle</div>
       <div class="value" id="trunk-val">0.0°</div>
@@ -345,6 +354,24 @@
       <div class="label">Fall Confidence</div>
       <div class="value" id="conf-val">0%</div>
       <div class="bar-track"><div class="bar-fill" id="conf-bar" style="width:0%"></div></div>
+    </div>
+
+    <!-- NEW: Uptime -->
+    <div class="metric-card">
+      <div class="label">System Uptime</div>
+      <div class="value neutral" id="uptime-val" style="font-size:18px">0s</div>
+    </div>
+
+    <!-- NEW: Total falls + last fall time side-by-side -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;flex-shrink:0;">
+      <div class="metric-card" style="padding:10px 12px;">
+        <div class="label">Total Falls</div>
+        <div class="value" id="total-falls-val" style="font-size:28px;color:var(--danger)">0</div>
+      </div>
+      <div class="metric-card" style="padding:10px 12px;">
+        <div class="label">Last Fall</div>
+        <div class="value neutral" id="last-fall-val" style="font-size:11px;line-height:1.4;margin-top:4px;word-break:break-all;">Never</div>
+      </div>
     </div>
 
     <div class="patient-card">
@@ -389,16 +416,28 @@
 
 <script>
   const patientId = {{ patient[0] if patient else 1 }};
-
-  // ── Poll live status every second ──────────────────────────────────────────
   let isOnline = false;
 
+  function formatUptime(seconds) {
+    if (seconds < 60) return seconds + "s";
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    if (m < 60) return m + "m " + s + "s";
+    const h = Math.floor(m / 60);
+    return h + "h " + (m % 60) + "m";
+  }
+
+  // ── Poll live status every second ─────────────────────────────────────────
   async function pollStatus() {
     try {
       const r = await fetch("/api/status");
       const d = await r.json();
 
-      // Online — show feed
+      // Uptime always updates regardless of online state
+      document.getElementById("uptime-val").textContent = formatUptime(d.uptime || 0);
+
+      if (!d.online) throw new Error("offline");
+
       if (!isOnline) {
         isOnline = true;
         document.getElementById("live-img").style.display = "block";
@@ -406,7 +445,7 @@
         document.getElementById("corner-label").textContent = "LIVE";
       }
 
-      // Status pill
+      // Status pill + fall overlay
       const pill = document.getElementById("status-pill");
       const overlay = document.getElementById("fall-overlay");
       if (d.fall_active) {
@@ -420,19 +459,17 @@
         overlay.classList.remove("active");
       }
 
-      // Source label
-      document.getElementById("source-label").textContent = d.source_label.toUpperCase();
+      document.getElementById("source-label").textContent = (d.source_label || "—").toUpperCase();
 
       // Trunk angle
       const angle = Math.abs(d.trunk_angle);
       const trunkVal = document.getElementById("trunk-val");
       const trunkBar = document.getElementById("trunk-bar");
       trunkVal.textContent = angle.toFixed(1) + "°";
-      const anglePct = Math.min(angle / 90 * 100, 100);
-      trunkBar.style.width = anglePct + "%";
-      if (angle > 60) { trunkVal.className = "value danger"; trunkBar.className = "bar-fill danger"; }
-      else if (angle > 35) { trunkVal.className = "value warn"; trunkBar.className = "bar-fill warn"; }
-      else { trunkVal.className = "value"; trunkBar.className = "bar-fill"; }
+      trunkBar.style.width = Math.min(angle / 90 * 100, 100) + "%";
+      if (angle > 60)      { trunkVal.className = "value danger"; trunkBar.className = "bar-fill danger"; }
+      else if (angle > 35) { trunkVal.className = "value warn";   trunkBar.className = "bar-fill warn"; }
+      else                 { trunkVal.className = "value";        trunkBar.className = "bar-fill"; }
 
       // Confidence
       const conf = d.confidence;
@@ -440,12 +477,19 @@
       const confBar = document.getElementById("conf-bar");
       confVal.textContent = conf.toFixed(1) + "%";
       confBar.style.width = conf + "%";
-      if (conf > 70) { confVal.className = "value danger"; confBar.className = "bar-fill danger"; }
-      else if (conf > 40) { confVal.className = "value warn"; confBar.className = "bar-fill warn"; }
-      else { confVal.className = "value"; confBar.className = "bar-fill"; }
+      if (conf > 70)      { confVal.className = "value danger"; confBar.className = "bar-fill danger"; }
+      else if (conf > 40) { confVal.className = "value warn";   confBar.className = "bar-fill warn"; }
+      else                { confVal.className = "value";        confBar.className = "bar-fill"; }
+
+      // Posture label
+      const postureEl = document.getElementById("posture-val");
+      const posture = d.posture_label || "—";
+      postureEl.textContent = posture;
+      if (posture === "FALLEN")       postureEl.className = "value danger";
+      else if (posture === "BENDING") postureEl.className = "value warn";
+      else                            postureEl.className = "value";
 
     } catch(e) {
-      // Detection stopped — show offline screen
       isOnline = false;
       document.getElementById("live-img").style.display = "none";
       document.getElementById("offline-screen").style.display = "flex";
@@ -454,20 +498,32 @@
       pill.textContent = "OFFLINE";
       pill.className = "";
       document.getElementById("fall-overlay").classList.remove("active");
+      document.getElementById("posture-val").textContent = "—";
+      document.getElementById("posture-val").className = "value";
     }
   }
 
-  // ── Poll fall history every 5 seconds ──────────────────────────────────────
+  // ── Poll fall history every 5 seconds ─────────────────────────────────────
   async function pollFalls() {
     try {
       const r = await fetch(`/api/falls/${patientId}`);
       const falls = await r.json();
+      if (falls.error) return;
+
+      // Update analytics cards
+      document.getElementById("total-falls-val").textContent = falls.length;
+      if (falls.length > 0) {
+        document.getElementById("last-fall-val").textContent = falls[falls.length - 1].timestamp;
+      } else {
+        document.getElementById("last-fall-val").textContent = "Never";
+      }
+
       const tbody = document.getElementById("fall-tbody");
       if (!falls.length) {
         tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No falls recorded yet.</td></tr>';
         return;
       }
-      tbody.innerHTML = falls.reverse().map((f, i) => `
+      tbody.innerHTML = [...falls].reverse().map((f, i) => `
         <tr>
           <td style="font-family:var(--mono);color:var(--muted)">${falls.length - i}</td>
           <td>${f.timestamp}</td>
