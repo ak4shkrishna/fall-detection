@@ -13,9 +13,32 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from config import (
     SENDER_EMAIL, SENDER_PASSWORD,
     CAREGIVER_1, CAREGIVER_2,
-    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
+    NTFY_TOPIC
 )
 from database.db import log_alert
+
+
+def send_ntfy(title: str, message: str, priority: str = "urgent"):
+    """Send loud push notification to phone via ntfy.sh — free, no account needed."""
+    try:
+        r = requests.post(
+            f"https://ntfy.sh/{NTFY_TOPIC}",
+            headers={
+                "Title":    title.encode("utf-8"),
+                "Priority": priority,
+                "Tags":     "warning,rotating_light",
+                "Content-Type": "text/plain; charset=utf-8",
+            },
+            data=message.encode("utf-8"),
+            timeout=10
+        )
+        if r.status_code == 200:
+            print(f"[NTFY] Phone notified successfully")
+        else:
+            print(f"[NTFY] Failed: {r.status_code} {r.text}")
+    except Exception as e:
+        print(f"[NTFY] Error: {e}")
 
 
 def send_telegram(message: str, image_path: str = None):
@@ -113,9 +136,16 @@ class AlertChain:
     def _run(self, fall_event_id, location, timestamp,
              patient_name, stick_path, real_photo_path):
 
-        # ── Level 1: Caregiver 1 ────────────────────────────────
+        # ── Level 1: Phone ring + Caregiver 1 ───────────────────
         print(f"\n[CHAIN] Level 1 — alerting {CAREGIVER_1['name']}")
         msg = format_message(patient_name, location, timestamp, "caregiver_1")
+
+        # Ring phone immediately — loud urgent notification
+        send_ntfy(
+            title=f"FALL DETECTED — {patient_name}",
+            message=f"Fall in {location} at {timestamp}. Please respond immediately.",
+            priority="urgent"
+        )
         send_telegram(msg, stick_path)
         send_email(CAREGIVER_1["email"],
                    f"FALL ALERT — {patient_name}", msg, stick_path)
@@ -133,6 +163,11 @@ class AlertChain:
         # ── Level 2: Caregiver 2 ────────────────────────────────
         print(f"\n[CHAIN] Level 2 — alerting {CAREGIVER_2['name']}")
         msg = format_message(patient_name, location, timestamp, "caregiver_2")
+        send_ntfy(
+            title=f"ESCALATED FALL ALERT — {patient_name}",
+            message=f"No response to Level 1. Fall in {location} at {timestamp}.",
+            priority="urgent"
+        )
         send_telegram(msg, stick_path)
         send_email(CAREGIVER_2["email"],
                    f"ESCALATED FALL ALERT — {patient_name}", msg, stick_path)
@@ -150,6 +185,11 @@ class AlertChain:
         # ── Level 3: Emergency ───────────────────────────────────
         print(f"\n[CHAIN] EMERGENCY LEVEL")
         msg = format_message(patient_name, location, timestamp, "emergency")
+        send_ntfy(
+            title=f"🆘 EMERGENCY — {patient_name}",
+            message=f"EMERGENCY. Fall in {location}. No response from caregivers.",
+            priority="urgent"
+        )
         send_telegram(msg, real_photo_path)
         send_email(CAREGIVER_1["email"],
                    f"EMERGENCY — {patient_name}", msg, real_photo_path)

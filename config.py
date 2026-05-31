@@ -19,7 +19,7 @@ CAREGIVER_1 = {
 
 # ── Caregiver 2 ──────────────────────────────────────────────────
 CAREGIVER_2 = {
-    "name"  : "Shri",
+    "name"  : "Krishna",
     "phone" : "8762569447",
     "email" : "akashkrishnar10@gmail.com"
 }
@@ -49,3 +49,4 @@ OKAY_PHRASES = [
 # ── Paths ─────────────────────────────────────────────────────────
 DB_PATH       = "database/fall_detection.db"
 SNAPSHOT_DIR  = "assets/snapshots"
+NTFY_TOPIC = "akash-fall-alert"
