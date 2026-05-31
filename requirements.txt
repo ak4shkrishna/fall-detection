@@ -1,0 +1,22 @@
+# ================================================================
+#  Fall Detection System — Requirements
+# ================================================================
+#  Install everything:
+#      pip install -r requirements.txt
+#
+#  If pyaudio fails on Windows:
+#      pip install pipwin
+#      pipwin install pyaudio
+#
+#  If pyaudio fails on Linux:
+#      sudo apt-get install portaudio19-dev
+#      pip install pyaudio
+# ================================================================
+
+mediapipe==0.10.30
+opencv-python>=4.9.0
+requests>=2.31.0
+pyttsx3>=2.90
+SpeechRecognition>=3.10.0
+pyaudio>=0.2.14
+numpy>=1.24.0
